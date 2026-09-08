@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>현대홈쇼핑 Hmall - 4060 인플루언서 발굴 시스템</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS (Excel Export) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    .spinner { border-top-color: #e11d48; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    /* 툴팁 레이어 강제 최상위 고정 */
+    #globalTooltip {
+      position: fixed;
+      display: none;
+      z-index: 999999 !important;
+      max-width: 320px;
+      background-color: rgba(15, 23, 42, 0.96);
+      color: #f8fafc;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      padding: 0.75rem 0.85rem;
+      font-size: 0.73rem;
+      line-height: 1.45;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+      pointer-events: none;
+      backdrop-filter: blur(4px);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 antialiased">
+
+  <!-- Floating Tooltip -->
+  <div id="globalTooltip"></div>
+
+  <!-- Header -->
+  <header class="bg-white border-b shadow-sm sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-3.5 flex flex-col md:flex-row justify-between items-center gap-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="bg-rose-600 text-white text-xs font-bold px-2 py-0.5 rounded tracking-wide">현대홈쇼핑 Hmall</span>
+          <h1 class="text-lg font-bold text-slate-900 tracking-tight">4060 인플루언서 발굴 시스템</h1>
+        </div>
+        <p class="text-xs text-slate-500 mt-0.5">유튜브 쇼핑 협업 최적화 4060 인플루언서 발굴 및 스코어링</p>
+      </div>
+      <div class="flex items-center gap-2 w-full md:w-auto">
+        <input type="password" id="apiKeyInput" placeholder="Google YouTube API Key 입력" 
+               class="px-3 py-2 border rounded-lg text-xs w-full md:w-80 focus:ring-2 focus:ring-rose-500 outline-none border-slate-300 shadow-inner" />
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-5 space-y-4">
+
+    <!-- Control Box -->
+    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-3">
+            <h2 class="text-sm font-bold text-slate-800">🎯 카테고리 선택</h2>
+            <button onclick="toggleAllCategories()" class="text-[11px] text-rose-600 hover:text-rose-800 font-semibold underline">
+              전체 선택 / 해제
+            </button>
+          </div>
+          <div class="flex flex-wrap gap-2.5 pt-2" id="categoryCheckboxes">
+            <label class="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition">
+              <input type="checkbox" value="패션_스타일" checked class="cat-check rounded text-rose-600 focus:ring-rose-500"> 👗 패션/스타일
+            </label>
+            <label class="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition">
+              <input type="checkbox" value="리빙_주방" checked class="cat-check rounded text-rose-600 focus:ring-rose-500"> 🍳 리빙/주방
+            </label>
+          </div>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <button id="btnStart" onclick="runDiscovery()" 
+                  class="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-5 py-2.5 rounded-lg shadow-sm transition flex items-center gap-2 cursor-pointer">
+            🚀 4060 크리에이터 발굴 시작
+          </button>
+          <button onclick="downloadExcel()" 
+                  class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+            📥 엑셀 다운로드
+          </button>
+        </div>
+      </div>
+
+      <!-- 토글 그룹 영역 -->
+      <div class="border-t border-slate-100 pt-3 space-y-2">
+        
+        <!-- 1. 유튜브 API Key 보관함 토글 -->
+        <div>
+          <button onclick="toggleApiKeyGuide()" class="text-xs text-rose-600 hover:text-rose-800 font-semibold flex items-center gap-1.5 cursor-pointer focus:outline-none">
+            <span id="apiKeyGuideIcon">▶</span>
+            <span>🔑 유튜브 API Key 보관함 (할당량 소진 시 교체용)</span>
+          </button>
+
+          <div id="apiKeyGuideBox" class="hidden mt-2 p-3.5 bg-rose-50/60 border border-rose-200 rounded-lg text-xs space-y-2">
+            <div class="flex justify-between items-center pb-1 border-b border-rose-200/60">
+              <span class="font-bold text-rose-950">공용 API Key 리스트 (드래그 복사 또는 [적용] 버튼 클릭)</span>
+              <span class="text-[11px] text-rose-700">일일 할당량 10,000 unit 소진 시 아래 키로 순차 교체</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] pt-1">
+              <div class="flex items-center justify-between bg-white border border-rose-200 px-2.5 py-1.5 rounded">
+                <span class="font-mono text-slate-700 select-all">AIzaSyAMdi5W5-5dI7mxf4EVbV3peCPEF4MZuy0</span>
+                <button onclick="applyApiKey('AIzaSyAMdi5W5-5dI7mxf4EVbV3peCPEF4MZuy0')" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-2 py-0.5 rounded text-[10px] ml-2 shrink-0">적용</button>
+              </div>
+              <div class="flex items-center justify-between bg-white border border-rose-200 px-2.5 py-1.5 rounded">
+                <span class="font-mono text-slate-700 select-all">AIzaSyA9wRGam32R5Wb-r4BBmIRhJtzCmoPXvD0</span>
+                <button onclick="applyApiKey('AIzaSyA9wRGam32R5Wb-r4BBmIRhJtzCmoPXvD0')" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-2 py-0.5 rounded text-[10px] ml-2 shrink-0">적용</button>
+              </div>
+              <div class="flex items-center justify-between bg-white border border-rose-200 px-2.5 py-1.5 rounded">
+                <span class="font-mono text-slate-700 select-all">AIzaSyBBCsvHblBo61x4ezvL-GBWrdHXezuf980</span>
+                <button onclick="applyApiKey('AIzaSyBBCsvHblBo61x4ezvL-GBWrdHXezuf980')" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-2 py-0.5 rounded text-[10px] ml-2 shrink-0">적용</button>
+              </div>
+              <div class="flex items-center justify-between bg-white border border-rose-200 px-2.5 py-1.5 rounded">
+                <span class="font-mono text-slate-700 select-all">AIzaSyBnDdGh0qg6pRPwpWmnQlZPMo2fHJgL_xU</span>
+                <button onclick="applyApiKey('AIzaSyBnDdGh0qg6pRPwpWmnQlZPMo2fHJgL_xU')" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-2 py-0.5 rounded text-[10px] ml-2 shrink-0">적용</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. 필수 조건 및 스코어링 산정 공식 자세히 보기 토글 -->
+        <div>
+          <button onclick="toggleLogicGuide()" class="text-xs text-slate-600 hover:text-slate-900 font-semibold flex items-center gap-1.5 cursor-pointer focus:outline-none">
+            <span id="guideIcon">▶</span>
+            <span>필수 조건 및 스코어링 산정 공식 자세히 보기</span>
+          </button>
+
+          <div id="logicGuideBox" class="hidden mt-2 p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 space-y-3">
+            <div>
+              <span class="font-bold text-slate-800">1. 필수 자격 조건 (1차 필터링)</span>
+              <ul class="list-disc list-inside mt-1 space-y-0.5 text-[11px] text-slate-600">
+                <li><b>타깃 모수</b>: 구독자 수 2,000명 ~ 50,000명 사이 마이크로 채널</li>
+                <li><b>진성 시니어 키워드 필수 매칭</b>: 엄마, 40~60대, 중년, 시니어, 은퇴, 갱년기, 주부, 워킹맘, 젊어보이는, 돌싱 등 최소 1개 이상 포함</li>
+                <li><b>네거티브 원천 차단</b>: 자취생, 원룸, 이슈/렉카성 콘텐츠(충격, 폭로, 사건, 연예인, 속보 등) 자동 배제</li>
+                <li><b>활동량 강화 컷오프</b>: <b>최근 30일 이내 신규 업로드 영상 최소 1편 이상 필수</b> (30일 초과 시 탈락)</li>
+              </ul>
+            </div>
+
+            <div>
+              <span class="font-bold text-slate-800">2. 종합 점수 산정 공식 (100점 만점 + 가산점 5점)</span>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-1 text-[11px]">
+                <div class="p-2.5 bg-white border border-slate-200 rounded">
+                  <b>구독자 체급 (15점)</b>: (구독자수 / 5만명) × 15
+                </div>
+                <div class="p-2.5 bg-white border border-slate-200 rounded">
+                  <b>조회수 배수 (25점)</b>: (평균 조회수 / 구독자수, 최대 1.2배 상한) 비례 산출
+                </div>
+                <div class="p-2.5 bg-white border border-slate-200 rounded">
+                  <b>댓글 반응 (30점)</b>: 절대량 15점(20개 기준) + 댓글률 15점(0.4% 기준)
+                </div>
+                <div class="p-2.5 bg-white border border-slate-200 rounded">
+                  <b>좋아요 반응 (18점)</b>: 절대량 9점(100개 기준) + 좋아요율 9점(3.0% 기준)
+                </div>
+                <div class="p-2.5 bg-white border border-emerald-200 rounded text-emerald-950 bg-emerald-50/60">
+                  <b>활동성 강화 (12점)</b>: 30일 내 4편+ & 7일 내 업로드 시 12점 / 2~3편 9점 / 1편 5점
+                </div>
+                <div class="p-2.5 bg-white border border-indigo-200 rounded text-indigo-900 bg-indigo-50/50">
+                  <b>브랜드 핏 보너스 (+5점)</b>: 현대홈쇼핑 PB/LB/프리미엄 키워드 1개 이상 매칭
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <span class="font-bold text-slate-800">3. 현대홈쇼핑 브랜드 핏 매칭 키워드</span>
+              <p class="mt-1 text-[11px] text-slate-500 leading-relaxed">
+                <b>패션</b>: 현대홈쇼핑, 현대, 현대백화점, 홈쇼핑, 라씨엔토, 머티리얼랩, 어반어라운드, 고비, 로얄메르, 올라카일리, 라일앤스콧, 프리마클라쎄, 에바큐브, 지프레쎄, 이상봉 / 프리미엄, 고급, 우아한, 세련된, 단아한, 클래식, 캐시미어, 실크, 울100, 백화점 등<br>
+                <b>리빙/주방</b>: 현대홈쇼핑, 현대, 현대백화점, 홈쇼핑, 브링크하우스, 뫼베, 야마치쿠, 쎈스앤쿡, 키하라, 마루야마 / 프리미엄, 고급, 우아한, 세련된, 정갈한, 단정한, 구스침구, 호텔침구, 명품, 명품타월, 테이블웨어, 도자기, 살림미학 등
+              </p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Status Box -->
+    <div id="statusBox" class="hidden bg-rose-50 border border-rose-200 text-rose-800 text-xs p-3.5 rounded-lg flex items-center gap-3">
+      <div class="spinner w-4 h-4 border-2 border-transparent rounded-full"></div>
+      <span id="statusText">채널 데이터를 수집 중입니다...</span>
+    </div>
+
+    <!-- Table Container -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="p-4 border-b bg-slate-50 flex justify-between items-center">
+        <div class="flex items-center gap-2">
+          <h3 class="text-xs font-bold text-slate-700">📋 4060 쇼핑 제휴 인플루언서 우선순위 리스트</h3>
+          <span id="totalBadge" class="text-[11px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-semibold">총 0명</span>
+        </div>
+        <div class="text-[11px] text-slate-400">💡 항목 헤더(ⓘ)에 마우스를 올리면 각 지표의 산정 방식이 표시됩니다.</div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs border-collapse min-w-[1100px]">
+          <thead class="bg-slate-100 border-b border-slate-200 text-slate-600 uppercase font-semibold select-none whitespace-nowrap">
+            <tr>
+              <th class="p-3 text-center w-12">순위</th>
+              <th class="p-3 text-center w-16 cursor-help" 
+                  onmousemove="showTooltip(event, '<b>[추천등급 기준]</b><br>• S등급: 상위 15% & 배수 0.5배 이상 & 댓글 10개 이상 & <b>브랜드 핏 우수 필수</b> & 활동량 9점 이상<br>• A등급: 상위 45% 우수 채널<br>• B등급: 일반 적격 채널')" 
+                  onmouseleave="hideTooltip()">추천등급 ⓘ</th>
+              <th class="p-3 min-w-[140px]">채널명</th>
+              <th class="p-3 w-20">카테고리</th>
+              <th class="p-3 w-28 cursor-help" 
+                  onmousemove="showTooltip(event, '<b>[구독자 체급 점수 (15점 만점)]</b><br>50,000명 기준 비례 배점<br>공식: (구독자수 / 50,000) × 15')" 
+                  onmouseleave="hideTooltip()">구독자 (점수) ⓘ</th>
+              <th class="p-3 text-center w-16 cursor-help" 
+                  onmousemove="showTooltip(event, '<b>[주력 포맷]</b><br>최근 영상 10개 중 70% 이상 비중에 따라 롱폼 / 숏폼 / 혼합 분류')" 
+                  onmouseleave="hideTooltip()">포맷 ⓘ</th>
+              <th class="p-3 w-24 cursor-help" 
+                  onmousemove="showTooltip(event, '<b>[조회수 배수 (25점 만점)]</b><br>평균 조회수 ÷ 구독자 수 (최대 1.2배 상한)<br>구독자 대비 알고리즘 도달력 평가')" 
+                  onmouseleave="hideTooltip()">조회수 배수 ⓘ</th>
+              <th class="p-3 w-32 cursor-help" 
+                  onmousemove="showTooltip(event, '<b>[댓글 반응 (30점 만점)]</b><br>• 절대량 점수: 15점 (평균 20개 만점)<br>• 댓글률 점수: 15점 (댓글률 0.4% 만점)<br>체급 역차별 방지 및 찐팬 소통력')" 
+                  onmouseleave="hideTooltip()">댓글 반응 ⓘ</th>
+              <th class="p-3 w-32 cursor-help" 
+                  onmousemove="showTooltip(event, '<b>[좋아요 반응 (18점 만점)]</b><br>• 절대량 점수: 9점 (평균 100개 만점)<br>• 좋아요율 점수: 9점 (좋아요율 3.0% 만점)<br>시청자 콘텐츠 호감도')" 
+                  onmouseleave="hideTooltip()">좋아요 반응 ⓘ</th>
+              <th class="p-3 w-36 cursor-help text-emerald-800 font-bold" 
+                  onmousemove="showTooltip(event, '<b>[활동량 점수 강화 (12점 만점)]</b><br>• 12점: 30일 내 4편+ & 7일 내 업로드<br>• 9점: 30일 내 2~3편 & 14일 내 업로드<br>• 5점: 30일 내 1편 (단발성 복귀 방지)<br>• 2점: 30일 내 1편이나 15일 이상 지연')" 
+                  onmouseleave="hideTooltip()">활동량 ⓘ</th>
+              <th class="p-3 text-center w-24 cursor-help text-indigo-700" 
+                  onmousemove="showTooltip(event, '<b>[현대홈쇼핑 브랜드 핏 (+5점 보너스)]</b><br>PB/LB/단독 브랜드명 및 프리미엄/고급 수식어 1개 이상 감지 시 5점 가산')" 
+                  onmouseleave="hideTooltip()">브랜드 핏 ⓘ</th>
+              <th class="p-3 text-center w-20 cursor-help" 
+                  onmousemove="showTooltip(event, '<b>[협업 경험 (참고용)]</b><br>설명란/댓글 내 쇼핑태그, 공구, 협찬, 제휴 링크 감지 여부 (점수 미반영)')" 
+                  onmouseleave="hideTooltip()">협업 경험 ⓘ</th>
+              <th class="p-3 font-bold text-rose-600 text-center w-20 cursor-help" 
+                  onmousemove="showTooltip(event, '<b>[종합 점수]</b><br>구독자(15) + 조회수(25) + 댓글(30) + 좋아요(18) + 활동량(12) + 브랜드핏(+5)')" 
+                  onmouseleave="hideTooltip()">종합점수 ⓘ</th>
+              <th class="p-3 min-w-[130px]">이메일</th>
+              <th class="p-3 text-center w-16">채널</th>
+            </tr>
+          </thead>
+          <tbody id="resultTableBody" class="divide-y divide-slate-100">
+            <tr>
+              <td colspan="15" class="text-center py-12 text-slate-400">
+                API Key를 입력하고 [4060 크리에이터 발굴 시작] 버튼을 눌러주세요.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    let collectedCreators = [];
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const savedKey = localStorage.getItem("yt_api_key");
+      if (savedKey) {
+        document.getElementById("apiKeyInput").value = savedKey;
+      }
+    });
+
+    // API Key 자동 적용 함수
+    function applyApiKey(key) {
+      document.getElementById("apiKeyInput").value = key;
+      localStorage.setItem("yt_api_key", key);
+      alert("선택하신 API Key가 상단 입력창에 적용되었습니다.");
+    }
+
+    // 마우스 커서 위치 기반 툴팁 표시
+    const globalTooltip = document.getElementById("globalTooltip");
+    function showTooltip(e, text) {
+      if (!globalTooltip) return;
+      globalTooltip.innerHTML = text;
+      globalTooltip.style.display = "block";
+      
+      const x = e.clientX;
+      const y = e.clientY;
+      const tooltipWidth = 280;
+      
+      let leftPos = x + 12;
+      if (leftPos + tooltipWidth > window.innerWidth) {
+        leftPos = x - tooltipWidth - 12;
+      }
+      
+      globalTooltip.style.left = `${leftPos}px`;
+      globalTooltip.style.top = `${y + 15}px`;
+    }
+
+    function hideTooltip() {
+      if (globalTooltip) globalTooltip.style.display = "none";
+    }
+
+    function toggleAllCategories() {
+      const checkboxes = document.querySelectorAll(".cat-check");
+      const anyUnchecked = Array.from(checkboxes).some(cb => !cb.checked);
+      checkboxes.forEach(cb => cb.checked = anyUnchecked);
+    }
+
+    // API Key 보관함 토글
+    function toggleApiKeyGuide() {
+      const box = document.getElementById("apiKeyGuideBox");
+      const icon = document.getElementById("apiKeyGuideIcon");
+      if (box.classList.contains("hidden")) {
+        box.classList.remove("hidden");
+        icon.innerText = "▼";
+      } else {
+        box.classList.add("hidden");
+        icon.innerText = "▶";
+      }
+    }
+
+    // 로직 가이드 토글
+    function toggleLogicGuide() {
+      const box = document.getElementById("logicGuideBox");
+      const icon = document.getElementById("guideIcon");
+      if (box.classList.contains("hidden")) {
+        box.classList.remove("hidden");
+        icon.innerText = "▼";
+      } else {
+        box.classList.add("hidden");
+        icon.innerText = "▶";
+      }
+    }
+
+    const SEARCH_QUERY_MAP = {
+      "패션_스타일": [
+        "50대 패션 코디 룩북",
+        "60대 중년 패션 코디",
+        "50대 일상 브이로그 옷",
+        "중년 여성 옷 하울",
+        "엄마 옷 동대문 하울",
+        "50대 주부 데일리룩",
+        "체형커버 중년 코디",
+        "40대 50대 모임룩 룩북",
+        "시니어 모델 패션 스타일링"
+      ],
+      "리빙_주방": [
+        "50대 주부 살림 브이로그",
+        "60대 일상 살림 밥상",
+        "주부 주방 살림 꿀팁",
+        "50대 집밥 밑반찬 만들기",
+        "살림 브이로그 주부 일상",
+        "주부 무쇠팬 스텐팬 길들이기",
+        "50대 시골밥상 요리 브이로그",
+        "단아한 60대 일상 브이로그",
+        "주부 주방 정리정돈 브이로그"
+      ]
+    };
+
+    const PRIMARY_SENIOR_REGEX = /(엄마|40대|50대|60대|70대|중년|시니어|은퇴|갱년기|주부|워킹맘|젊어보이는|젊어지는|어려보이는|어려지는|돌싱|아줌마|동안|할머니|여사님|실버|오십춘기|인생후반전|황혼)/i;
+    const TARGET_LIFESTYLE_REGEX = /(살림9단|살림|동안|안티에이징|우아한|우아하게|세련된|체형커버|체형단점|뱃살커버|군살커버|뱃살|군살|모임룩|하객룩|쇼핑|구매|코디|입으세요|데일리룩|동창회룩|동창회|백화점|아울렛|럭셔리|명품|동대문|남대문|밑반찬|살림일기|주부일상|주방용품|무쇠팬|스텐팬|집밥|제철음식|정갈한|밥상|식사)/i;
+    const NEGATIVE_REGEX = /(자취생|자취요리|원룸|이슈|폭로|충격|사건|사고|논란|연예인|사망|근황|뉴스|속보)/i;
+
+    const BRAND_POSITIVE_KEYWORDS = {
+      "패션_스타일": [
+        "현대홈쇼핑", "현대", "현대백화점", "홈쇼핑", "라씨엔토", "lacciento", "머티리얼랩", "materiallab", "어반어라운드", "urbanaround",
+        "고비", "gobi", "로얄메르", "royalmer", "올라카일리", "orlakiely", "라일앤스콧", "lyleandscott",
+        "프리마클라쎄", "1aclasse", "에바큐브", "evacube", "지프레쎄", "gipresse", "이상봉", "leesangbong",
+        "프리미엄", "고급", "고급스러운", "고급진", "우아한", "우아하게", "세련된", "단아한", "귀티", "클래식", "타임리스",
+        "캐시미어", "울100", "메리노울", "실크", "천연소재", "소재감", "원단", "백화점"
+      ],
+      "리빙_주방": [
+        "현대홈쇼핑", "현대", "현대백화점", "홈쇼핑", "브링크하우스", "brinkhaus", "뫼베", "moeve", "야마치쿠", "yamachiku",
+        "쎈스앤쿡", "키하라", "kihara", "마루야마", "maruyama",
+        "프리미엄", "고급", "우아한", "세련된", "정갈한", "단정한", "호텔식", "호텔침구", "살림미학", "정리정돈",
+        "구스침구", "구스이불", "명품", "명품타월", "타월", "장인", "도자기", "테이블웨어", "플레이팅", "오브제", "린넨"
+      ]
+    };
+
+    const ADVANCED_COMMERCE_PATTERNS = [
+      /(queenit|퀸잇|29cm|zigzag|지그재그|musinsa|무신사|wconcept|더블유컨셉|ably|에이블리|oliveyoung|올리브영|coupang|쿠팡|smartstore|스마트스토어|brand\.naver|네이버쇼핑|hmall|현대Hmall|thehyundai|더현대|lotteon|롯데온|ssg\.com|쓱닷컴|gsshop|GS샵|cjonstyle|CJ온스타일|todayhouse|오늘의집|kurly|마켓컬리|iherb|아이허브|11st|11번가|gmarket|지마켓|auction|옥션)/i,
+      /(litt\.ly|리틀리|linktr\.ee|링크트리|instabio|인스타바이오|bit\.ly|me2\.do|tinyurl|is\.gd|page\.link|linkprice|태그바이|tagby)/i,
+      /(youtube_shopping|utm_medium=affiliate|utm_campaign|tracking_code|partners|affiliate|recommender|promoter)/i,
+      /(수수료.*(받|제공|지급)|일정액의\s*수수료|일정\s*비율의\s*수수료|커미션|제품\s*태그|태그된\s*(제품|상품)|구매\s*좌표|구매처|소정의\s*원고료)/i,
+      /(유료\s*광고|광고\s*포함|배너\s*광고|협찬(을|으로)?\s*(받|제공|진행)|단순\s*(제공|선물|협찬)|원고료.*(받|지원)|제작비.*지원|체험단|PPL|브랜디드)/i,
+      /(공동\s*구매|공구\s*링크|단독\s*공구|최저가\s*공구|공구\s*오픈|할인\s*코드|단독\s*최저가|프로모션\s*코드|시크릿\s*링크|쿠폰\s*코드)/i
+    ];
+
+    function parseDurationToSeconds(duration) {
+      if (!duration) return 0;
+      const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+      if (!match) return 0;
+      const hours = parseInt(match[1] || 0);
+      const minutes = parseInt(match[2] || 0);
+      const seconds = parseInt(match[3] || 0);
+      return hours * 3600 + minutes * 60 + seconds;
+    }
+
+    async function apiCall(endpoint, params) {
+      const apiKey = document.getElementById("apiKeyInput").value.trim();
+      if (!apiKey) throw new Error("Google YouTube API Key를 입력해주세요.");
+      
+      const query = new URLSearchParams({ ...params, key: apiKey });
+      let res;
+      try {
+        res = await fetch(`https://www.googleapis.com/youtube/v3/${endpoint}?${query}`);
+      } catch (e) {
+        throw new Error("네트워크 연결에 실패했습니다. 인터넷 상태를 확인해주세요.");
+      }
+
+      const json = await res.json();
+      if (json.error) {
+        const errReason = json.error.errors?.[0]?.reason || "";
+        if (errReason === "quotaExceeded") {
+          throw new Error("⚠️ YouTube API 무료 일일 할당량이 초과되었습니다. 상단 [API Key 보관함]에서 다른 새 키를 적용해주세요.");
+        } else if (errReason === "keyInvalid" || json.error.message.includes("API key not valid")) {
+          throw new Error("⚠️ 유효하지 않은 API Key입니다. 키 값을 다시 확인해주세요.");
+        }
+        throw new Error(json.error.message || "API 요청 중 오류가 발생했습니다.");
+      }
+      return json;
+    }
+
+    function detectCommerceHistory(text) {
+      const normalized = text.replace(/[\r\n\t\f\v]+/g, " ");
+      return ADVANCED_COMMERCE_PATTERNS.some(regex => regex.test(normalized)) ? "있음" : "없음";
+    }
+
+    function evaluateBrandFit(catKey, cleanedText) {
+      const keywords = BRAND_POSITIVE_KEYWORDS[catKey] || [];
+      const lowerText = cleanedText.toLowerCase();
+      const matched = [];
+
+      keywords.forEach(kw => {
+        if (lowerText.includes(kw.toLowerCase())) {
+          matched.push(kw);
+        }
+      });
+
+      let bonusScore = 0;
+      let label = "일반";
+      let badgeClass = "bg-slate-100 text-slate-500";
+
+      if (matched.length >= 1) {
+        bonusScore = 5;
+        label = "우수";
+        badgeClass = "bg-indigo-100 text-indigo-800 font-bold border border-indigo-200";
+      }
+
+      return {
+        bonusScore,
+        label,
+        badgeClass,
+        matchedCount: matched.length,
+        tags: matched.slice(0, 2).map(t => `#${t}`).join(" ")
+      };
+    }
+
+    async function runDiscovery() {
+      const apiKey = document.getElementById("apiKeyInput").value.trim();
+      if (!apiKey) {
+        alert("Google YouTube API Key를 입력해주세요.");
+        document.getElementById("apiKeyInput").focus();
+        return;
+      }
+      localStorage.setItem("yt_api_key", apiKey);
+
+      const statusBox = document.getElementById("statusBox");
+      const statusText = document.getElementById("statusText");
+      const tBody = document.getElementById("resultTableBody");
+
+      try {
+        statusBox.classList.remove("hidden");
+        collectedCreators = [];
+        let rawCandidates = [];
+        tBody.innerHTML = `<tr><td colspan="15" class="text-center py-10 text-slate-500 font-medium">크리에이터 데이터를 안전하게 수집 및 분석 중입니다...</td></tr>`;
+
+        const selectedCategories = Array.from(document.querySelectorAll("#categoryCheckboxes input:checked")).map(el => el.value);
+        if (selectedCategories.length === 0) throw new Error("최소 1개 이상의 카테고리를 선택하세요.");
+
+        for (const cat of selectedCategories) {
+          statusText.innerText = `[${cat.replace(/_/g, '/')}] 영상 검색 및 채널 역추적 수집 중...`;
+          const queries = SEARCH_QUERY_MAP[cat] || [];
+          let candidateIds = new Set();
+
+          for (const q of queries) {
+            const sRes = await apiCall("search", {
+              q: q, type: "video", part: "snippet", regionCode: "KR", relevanceLanguage: "ko", maxResults: 50
+            });
+            (sRes.items || []).forEach(item => {
+              if (item.snippet && item.snippet.channelId) candidateIds.add(item.snippet.channelId);
+            });
+          }
+
+          const cIdList = Array.from(candidateIds);
+          if (cIdList.length === 0) continue;
+
+          let channelItems = [];
+          for (let i = 0; i < cIdList.length; i += 50) {
+            const chunk = cIdList.slice(i, i + 50);
+            const cRes = await apiCall("channels", {
+              part: "snippet,statistics,contentDetails", id: chunk.join(",")
+            });
+            channelItems = channelItems.concat(cRes.items || []);
+          }
+
+          for (const ch of channelItems) {
+            const subs = parseInt(ch.statistics?.subscriberCount || 0);
+            if (subs < 2000 || subs > 50000) continue;
+
+            const title = ch.snippet.title;
+            const desc = ch.snippet.description || "";
+            const customUrl = ch.snippet.customUrl ? `https://www.youtube.com/${ch.snippet.customUrl}` : `https://www.youtube.com/channel/${ch.id}`;
+            const emailMatch = desc.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+            const email = emailMatch ? emailMatch[0] : "미기재";
+
+            const upId = ch.contentDetails?.relatedPlaylists?.uploads;
+            if (!upId) continue;
+
+            const pRes = await apiCall("playlistItems", {
+              part: "snippet,contentDetails", playlistId: upId, maxResults: 10
+            });
+
+            const items = pRes.items || [];
+            if (items.length === 0) continue;
+
+            const now = new Date();
+            const d30 = new Date(now - 30 * 24 * 60 * 60 * 1000);
+            const latestPubDate = new Date(items[0].snippet.publishedAt);
+            const daysSinceLastUpload = Math.floor((now - latestPubDate) / (1000 * 60 * 60 * 24));
+
+            // 최근 30일 이내 업로드 필수 컷오프
+            if (daysSinceLastUpload > 30) continue;
+
+            let videoIds = [];
+            let videoTexts = [];
+            let uploadsIn30Days = 0;
+
+            items.forEach(v => {
+              const pDate = new Date(v.snippet.publishedAt);
+              videoIds.push(v.contentDetails.videoId);
+              videoTexts.push(v.snippet.title + " " + (v.snippet.description || ""));
+              if (pDate >= d30) uploadsIn30Days++;
+            });
+
+            const fullContextText = title + " " + desc + " " + videoTexts.join(" ");
+            const cleanedContextText = fullContextText.replace(/\s+/g, "");
+
+            if (NEGATIVE_REGEX.test(cleanedContextText)) continue;
+            if (!PRIMARY_SENIOR_REGEX.test(cleanedContextText)) continue;
+            if (!TARGET_LIFESTYLE_REGEX.test(cleanedContextText) && !PRIMARY_SENIOR_REGEX.test(cleanedContextText)) continue;
+
+            let avgView = 0, avgComment = 0, avgLike = 0;
+            let formatType = "혼합";
+            try {
+              const vRes = await apiCall("videos", {
+                part: "statistics,contentDetails", id: videoIds.slice(0, 10).join(",")
+              });
+              let allViews = [], allComments = [], allLikes = [];
+              let shortCount = 0, longCount = 0;
+
+              (vRes.items || []).forEach(v => {
+                allViews.push(parseInt(v.statistics?.viewCount || 0));
+                allComments.push(parseInt(v.statistics?.commentCount || 0));
+                allLikes.push(parseInt(v.statistics?.likeCount || 0));
+                
+                const sec = parseDurationToSeconds(v.contentDetails?.duration);
+                if (sec > 0 && sec <= 60) shortCount++;
+                else longCount++;
+              });
+
+              const totalChecked = shortCount + longCount;
+              if (totalChecked > 0) {
+                if (longCount / totalChecked >= 0.7) formatType = "롱폼";
+                else if (shortCount / totalChecked >= 0.7) formatType = "숏폼";
+              }
+
+              avgView = allViews.length ? Math.round(allViews.reduce((a, b) => a + b, 0) / allViews.length) : 0;
+              avgComment = allComments.length ? Math.round(allComments.reduce((a, b) => a + b, 0) / allComments.length) : 0;
+              avgLike = allLikes.length ? Math.round(allLikes.reduce((a, b) => a + b, 0) / allLikes.length) : 0;
+            } catch (vErr) {
+              console.warn("영상 통계 조회 건너뜀:", vErr);
+            }
+
+            const subScore = Math.min((subs / 50000) * 15, 15);
+            const viewToSubRatio = subs > 0 ? (avgView / subs) : 0;
+            const cappedRatio = Math.min(viewToSubRatio, 1.2);
+            const reachScore = Math.min((cappedRatio / 1.0) * 25, 25);
+
+            const commentVolumeScore = Math.min((avgComment / 20) * 15, 15);
+            const commentRate = avgView > 0 ? (avgComment / avgView) * 100 : 0;
+            const commentRateScore = Math.min((commentRate / 0.4) * 15, 15);
+            const commentTotalScore = commentVolumeScore + commentRateScore;
+
+            const likeVolumeScore = Math.min((avgLike / 100) * 9, 9);
+            const likeRate = avgView > 0 ? (avgLike / avgView) * 100 : 0;
+            const likeRateScore = Math.min((likeRate / 3.0) * 9, 9);
+            const likeTotalScore = likeVolumeScore + likeRateScore;
+
+            // 활동량 가산점 공식
+            let activityScore = 0;
+            if (uploadsIn30Days >= 4 && daysSinceLastUpload <= 7) {
+              activityScore = 12;
+            } else if (uploadsIn30Days >= 2 && daysSinceLastUpload <= 14) {
+              activityScore = 9;
+            } else if (uploadsIn30Days === 1 && daysSinceLastUpload <= 14) {
+              activityScore = 5;
+            } else {
+              activityScore = 2;
+            }
+
+            const activityLabel = `${activityScore}점 (${uploadsIn30Days}편 / ${daysSinceLastUpload}일 전)`;
+            const brandFitInfo = evaluateBrandFit(cat, cleanedContextText);
+
+            const baseScore = subScore + reachScore + commentTotalScore + likeTotalScore + activityScore;
+            const finalScore = Math.round(baseScore + brandFitInfo.bonusScore);
+
+            const commerceLabel = detectCommerceHistory(fullContextText);
+
+            rawCandidates.push({
+              title,
+              category: cat.replace(/_/g, '/'),
+              subs,
+              subScore: `${subScore.toFixed(1)}점`,
+              formatType,
+              viewMultiplierVal: viewToSubRatio,
+              viewMultiplier: `${viewToSubRatio.toFixed(2)}배`,
+              avgComment,
+              fanCommentText: `${commentRate.toFixed(2)}% (${avgComment}개)`,
+              fanLikeText: `${likeRate.toFixed(1)}% (${avgLike}개)`,
+              activityScore,
+              activityText: activityLabel,
+              brandFit: brandFitInfo,
+              sponsorLabel: commerceLabel,
+              score: finalScore,
+              email,
+              url: customUrl
+            });
+          }
+        }
+
+        const uniqueMap = new Map();
+        rawCandidates.forEach(item => {
+          if (!uniqueMap.has(item.url)) uniqueMap.set(item.url, item);
+        });
+        const finalPool = Array.from(uniqueMap.values());
+
+        // 1차 점수순 정렬
+        finalPool.sort((a, b) => b.score - a.score);
+
+        const totalCount = finalPool.length;
+        const sCut = Math.max(Math.floor(totalCount * 0.15), 5);
+        const aCut = Math.max(Math.floor(totalCount * 0.45), 20);
+
+        // S등급 가드레일
+        finalPool.forEach((c, idx) => {
+          const qualifiesForS = (
+            c.viewMultiplierVal >= 0.5 && 
+            c.avgComment >= 10 && 
+            c.brandFit.matchedCount >= 1 && 
+            c.activityScore >= 9
+          );
+
+          if (idx < sCut && qualifiesForS) {
+            c.grade = "S";
+            c.gradeWeight = 3;
+          } else if (idx < aCut) {
+            c.grade = "A";
+            c.gradeWeight = 2;
+          } else {
+            c.grade = "B";
+            c.gradeWeight = 1;
+          }
+        });
+
+        // 2차 정렬: 등급 우선(S -> A -> B) -> 종합점수순 -> 조회수 배수순
+        finalPool.sort((a, b) => {
+          if (b.gradeWeight !== a.gradeWeight) return b.gradeWeight - a.gradeWeight;
+          if (b.score !== a.score) return b.score - a.score;
+          return b.viewMultiplierVal - a.viewMultiplierVal;
+        });
+
+        finalPool.forEach((c, idx) => {
+          c.rank = idx + 1;
+        });
+
+        collectedCreators = finalPool;
+        renderTable();
+        statusBox.classList.add("hidden");
+      } catch (err) {
+        alert(err.message);
+        statusBox.classList.add("hidden");
+      }
+    }
+
+    function renderTable() {
+      const tBody = document.getElementById("resultTableBody");
+      document.getElementById("totalBadge").innerText = `총 ${collectedCreators.length}명`;
+
+      if (collectedCreators.length === 0) {
+        tBody.innerHTML = `<tr><td colspan="15" class="text-center py-10 text-slate-400">조건을 충족하는 채널이 없습니다.</td></tr>`;
+        return;
+      }
+
+      tBody.innerHTML = collectedCreators.map(c => `
+        <tr class="${c.grade === 'S' ? 'bg-amber-50/70 font-medium' : 'hover:bg-slate-50 transition'} border-b border-slate-100 text-xs">
+          <td class="p-3 text-slate-500 font-semibold text-center whitespace-nowrap">${c.rank}</td>
+          <td class="p-3 text-center whitespace-nowrap">
+            <span class="inline-block w-6 py-0.5 text-center rounded text-xs font-bold ${
+              c.grade === 'S' ? 'bg-amber-200 text-amber-900 border border-amber-300' : 
+              c.grade === 'A' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-700'
+            }">
+              ${c.grade}
+            </span>
+          </td>
+          <td class="p-3 font-bold text-slate-900 leading-snug">${c.title}</td>
+          <td class="p-3 whitespace-nowrap"><span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px]">${c.category}</span></td>
+          <td class="p-3 font-semibold text-slate-800 whitespace-nowrap">
+            ${c.subs.toLocaleString()}명
+            <span class="text-[10px] text-slate-400 font-normal">(${c.subScore})</span>
+          </td>
+          <td class="p-3 text-center whitespace-nowrap">
+            <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${
+              c.formatType === '롱폼' ? 'bg-emerald-100 text-emerald-800' : 
+              c.formatType === '숏폼' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-700'
+            }">
+              ${c.formatType}
+            </span>
+          </td>
+          <td class="p-3 font-bold text-indigo-600 whitespace-nowrap">${c.viewMultiplier}</td>
+          <td class="p-3 font-bold text-rose-600 whitespace-nowrap">${c.fanCommentText}</td>
+          <td class="p-3 font-bold text-amber-600 whitespace-nowrap">${c.fanLikeText}</td>
+          <td class="p-3 whitespace-nowrap font-medium text-emerald-800 text-[11px]">
+            ${c.activityText}
+          </td>
+          <td class="p-3 text-center whitespace-nowrap">
+            <span class="px-2 py-0.5 rounded text-[11px] ${c.brandFit.badgeClass}">
+              ${c.brandFit.label}
+            </span>
+            ${c.brandFit.tags ? `<div class="text-[10px] text-slate-400 mt-0.5">${c.brandFit.tags}</div>` : ''}
+          </td>
+          <td class="p-3 text-center whitespace-nowrap">
+            <span class="px-2 py-0.5 rounded text-[11px] font-bold ${c.sponsorLabel === '있음' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}">
+              ${c.sponsorLabel}
+            </span>
+          </td>
+          <td class="p-3 font-extrabold text-rose-600 text-sm text-center whitespace-nowrap">${c.score}점</td>
+          <td class="p-3 text-slate-600 text-[11px] font-mono select-all">${c.email}</td>
+          <td class="p-3 text-center whitespace-nowrap">
+            <a href="${c.url}" target="_blank" class="inline-block text-[11px] bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-2 py-1 rounded shadow-2xs">
+              채널 ↗
+            </a>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function downloadExcel() {
+      if (collectedCreators.length === 0) return alert("다운로드할 데이터가 없습니다.");
+      const exportData = collectedCreators.map(c => ({
+        "순위": c.rank,
+        "추천등급": c.grade,
+        "채널명": c.title,
+        "카테고리": c.category,
+        "구독자 수": c.subs,
+        "구독자 점수(15점)": c.subScore,
+        "주력 포맷": c.formatType,
+        "조회수 배수(25점)": c.viewMultiplier,
+        "댓글 반응(30점)": c.fanCommentText,
+        "좋아요 반응(18점)": c.fanLikeText,
+        "활동량(12점)": c.activityText,
+        "브랜드 핏": c.brandFit.label,
+        "매칭 태그": c.brandFit.tags,
+        "협업 경험": c.sponsorLabel,
+        "종합점수(보너스포함)": c.score,
+        "이메일": c.email,
+        "채널 바로가기": c.url
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "4060_인플루언서_리스트");
+      XLSX.writeFile(wb, "현대홈쇼핑_4060_인플루언서_발굴리스트.xlsx");
+    }
+  </script>
+</body>
+</html>
